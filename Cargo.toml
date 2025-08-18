@@ -1,0 +1,23 @@
+[package]
+name = "stts22h-rs"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85.1"
+readme = "README.md"
+license = "BSD-3-Clause"
+categories = ["embedded", "no-std"]
+keywords = ["st", "sensor", "temperature", "low-power"]
+repository = "https://github.com/STMicroelectronics/stts22h-rs"
+description = """
+    Platform-agnostic driver for the STTS22H high-accuracy digital temperature sensor with I2C/SMBus
+    interface, low power modes, and programmable interrupt.
+"""
+
+[dependencies]
+embedded-hal = "1.0.0"
+bitfield-struct = "0.10.0"
+st-mems-bus = "1.0.0"
+
+# By default the bit order is assumed as Least Significant Bit.
+[features]
+bit_order_msb = []
