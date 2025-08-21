@@ -16,7 +16,7 @@ description = """
 [dependencies]
 embedded-hal = "1.0.0"
 bitfield-struct = "0.10.0"
-st-mems-bus = "1.0.0"
+st-mems-bus = "1.0.1"
 
 # By default the bit order is assumed as Least Significant Bit.
 [features]
