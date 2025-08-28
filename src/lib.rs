@@ -337,8 +337,9 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn auto_increment_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
+        let ctrl = Ctrl(arr[0]);
 
-        Ok(arr[0])
+        Ok(ctrl.if_add_inc())
     }
     /// Over temperature interrupt value. (degC / 0.64) + 63. (set)
     ///
