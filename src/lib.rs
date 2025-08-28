@@ -523,8 +523,10 @@ pub enum Reg {
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq)]
 pub enum I2CAddress {
-    I2cAddH = 0x71,
-    I2cAddL = 0x7F,
+    I2cAddH = 0x38,
+    I2cAdd15kohm = 0x3C,
+    I2cAdd56kohm = 0x3E,
+    I2cAddL = 0x3F,
 }
 
 pub const ID: u8 = 0xA0;
