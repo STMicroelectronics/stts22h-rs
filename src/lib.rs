@@ -1,9 +1,13 @@
 #![no_std]
-use bitfield_struct::bitfield;
 use core::fmt::Debug;
 use embedded_hal::i2c::{I2c, SevenBitAddress};
 
 use st_mems_bus::*;
+
+pub mod prelude;
+pub mod register;
+
+use prelude::*;
 
 /// Driver for the STTS22H sensor.
 ///
@@ -94,14 +98,14 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_data_rate_set(&mut self, val: OdrTemp) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl(arr[0]);
+        let mut ctrl = Ctrl::from_bits(arr[0]);
 
         ctrl.set_one_shot((val as u8) & 0x01);
         ctrl.set_freerun(((val as u8) & 0x02) >> 1);
         ctrl.set_low_odr_start(((val as u8) & 0x04) >> 2);
         ctrl.set_avg(((val as u8) & 0x30) >> 4);
 
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
 
         Ok(())
     }
@@ -116,7 +120,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_data_rate_get(&mut self) -> Result<OdrTemp, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl(arr[0]);
+        let ctrl = Ctrl::from_bits(arr[0]);
 
         let odr_value = ctrl.one_shot()
             | (ctrl.freerun() << 1)
@@ -145,9 +149,9 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn block_data_update_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl(arr[0]);
+        let mut ctrl = Ctrl::from_bits(arr[0]);
         ctrl.set_bdu(val);
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
 
         Ok(())
     }
@@ -173,7 +177,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_flag_data_ready_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status(arr[0]);
+        let status = Status::from_bits(arr[0]);
 
         let val = if status.busy() == 1 { 0 } else { 1 };
 
@@ -219,7 +223,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn dev_status_get(&mut self) -> Result<DevStatus, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status(arr[0]);
+        let status = Status::from_bits(arr[0]);
         let dev_status = DevStatus {
             busy: status.busy(),
         };
@@ -235,9 +239,9 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn smbus_interface_set(&mut self, val: SmbusMd) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl(arr[0]);
+        let mut ctrl = Ctrl::from_bits(arr[0]);
         ctrl.set_time_out_dis(val as u8);
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
 
         Ok(())
     }
@@ -252,7 +256,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn smbus_interface_get(&mut self) -> Result<SmbusMd, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl(arr[0]);
+        let ctrl = Ctrl::from_bits(arr[0]);
 
         let val = match ctrl.time_out_dis() {
             0 => SmbusMd::TimeoutEnable,
@@ -272,7 +276,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn auto_increment_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl(arr[0]);
+        let mut ctrl = Ctrl::from_bits(arr[0]);
         ctrl.set_if_add_inc(val);
         if val == 1 {
             self.chunk_size = CHUNK_SIZE;
@@ -280,7 +284,7 @@ impl<B: BusOperation> Stts22h<B> {
             self.chunk_size = 1;
         }
 
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
 
         Ok(())
     }
@@ -296,7 +300,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn auto_increment_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl(arr[0]);
+        let ctrl = Ctrl::from_bits(arr[0]);
 
         Ok(ctrl.if_add_inc())
     }
@@ -314,9 +318,9 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_trshld_high_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
-        let mut temp_h_limit = TempHLimit(arr[0]);
+        let mut temp_h_limit = TempHLimit::from_bits(arr[0]);
         temp_h_limit.set_thl(val);
-        self.write_to_register(Reg::TempHLimit as u8, &[temp_h_limit.0])?;
+        self.write_to_register(Reg::TempHLimit as u8, &[temp_h_limit.into_bits()])?;
 
         Ok(())
     }
@@ -332,7 +336,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_trshld_high_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
-        let val: u8 = TempHLimit(arr[0]).thl();
+        let val: u8 = TempHLimit::from_bits(arr[0]).thl();
 
         Ok(val)
     }
@@ -348,9 +352,9 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_trshld_low_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
-        let mut temp_l_limit = TempLLimit(arr[0]);
+        let mut temp_l_limit = TempLLimit::from_bits(arr[0]);
         temp_l_limit.set_tll(val);
-        self.write_to_register(Reg::TempLLimit as u8, &[temp_l_limit.0])?;
+        self.write_to_register(Reg::TempLLimit as u8, &[temp_l_limit.into_bits()])?;
 
         Ok(())
     }
@@ -366,7 +370,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_trshld_low_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
-        let val: u8 = TempLLimit(arr[0]).tll();
+        let val: u8 = TempLLimit::from_bits(arr[0]).tll();
 
         Ok(val)
     }
@@ -390,7 +394,7 @@ impl<B: BusOperation> Stts22h<B> {
     pub fn temp_trshld_src_get(&mut self) -> Result<TempTrlhdSrc, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status(arr[0]);
+        let status = Status::from_bits(arr[0]);
 
         let under_thl = status.under_thl();
         let over_thh = status.over_thh();
@@ -413,92 +417,6 @@ impl<B: BusOperation> Stts22h<B> {
 /// * Temperature in degrees Celsius as an `f32`.
 pub fn from_lsb_to_celsius(lsb: i16) -> f32 {
     lsb as f32 / 100.0
-}
-
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct Ctrl {
-    #[bits(1)]
-    pub one_shot: u8,
-    #[bits(1)]
-    pub time_out_dis: u8,
-    #[bits(1)]
-    pub freerun: u8,
-    #[bits(1)]
-    pub if_add_inc: u8,
-    #[bits(2)]
-    pub avg: u8,
-    #[bits(1)]
-    pub bdu: u8,
-    #[bits(1)]
-    pub low_odr_start: u8,
-}
-
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct Status {
-    #[bits(1)]
-    pub busy: u8,
-    #[bits(1)]
-    pub over_thh: u8,
-    #[bits(1)]
-    pub under_thl: u8,
-    #[bits(5, access = RO)]
-    pub not_used_01: u8,
-}
-
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct TempHLimit {
-    #[bits(8)]
-    pub thl: u8,
-}
-
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct TempLLimit {
-    #[bits(8)]
-    pub tll: u8,
-}
-
-pub struct DevStatus {
-    pub busy: u8,
-}
-
-pub struct TempTrlhdSrc {
-    pub under_thl: u8,
-    pub over_thh: u8,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
-pub enum OdrTemp {
-    PowerDown = 0x00,
-    OneShot = 0x01,
-    Odr1Hz = 0x04,
-    Odr25Hz = 0x02,
-    Odr50Hz = 0x12,
-    Odr100Hz = 0x22,
-    Odr200Hz = 0x32,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
-pub enum SmbusMd {
-    TimeoutEnable = 0,
-    TimeoutDisable = 1,
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
-pub enum Reg {
-    WhoAmI = 0x01,
-    TempHLimit = 0x02,
-    TempLLimit = 0x03,
-    Ctrl = 0x04,
-    Status = 0x05,
-    TempLOut = 0x06,
-    TempHOut = 0x07,
 }
 
 #[repr(u8)]
