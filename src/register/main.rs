@@ -1,9 +1,82 @@
 use bitfield_struct::bitfield;
+use crate::{Stts22h, Error};
+use st_mem_bank_macro::register;
+use st_mems_bus::BusOperation;
+
+/// Register addresses
+///
+/// Enumerates the register map of the STTS22H.
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq)]
+pub enum Reg {
+    /// WHO_AM_I register (device identification)
+    WhoAmI = 0x01,
+    /// TEMP_H_LIMIT register (high temperature threshold)
+    TempHLimit = 0x02,
+    /// TEMP_L_LIMIT register (low temperature threshold)
+    TempLLimit = 0x03,
+    /// CTRL register (configuration and mode control)
+    Ctrl = 0x04,
+    /// STATUS register (conversion and threshold status)
+    Status = 0x05,
+    /// TEMP_L_OUT register (temperature output, low byte)
+    TempLOut = 0x06,
+    /// TEMP_H_OUT register (temperature output, high byte)
+    TempHOut = 0x07,
+}
+
+/// WHO_AM_I (0x01)
+///
+/// Device identification register (Read-only)
+/// Returns a fixed device ID value (default: 0xA0) to identify the STTS22H sensor.
+#[register(address = Reg::WhoAmI, access_type = Stts22h, generics = 1)]
+#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
+#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
+pub struct WhoAmI {
+    /// WHO_AM_I[7:0]
+    /// Device identification value (default: 0xA0).
+    /// Used to verify communication with the STTS22H sensor.
+    #[bits(8)]
+    pub who_am_i: u8,
+}
+
+/// TEMP_H_LIMIT (0x02)
+///
+/// High temperature threshold register (R/W)
+/// Sets the high temperature interrupt threshold.
+/// Threshold = (TEMP_H_LIMIT - 63) * 0.64°C.
+/// Writing 0 disables the high limit interrupt.
+#[register(address = Reg::TempHLimit, access_type = Stts22h, generics = 1)]
+#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
+#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
+pub struct TempHLimit {
+    /// THL[7:0]
+    /// High temperature threshold value.
+    #[bits(8)]
+    pub thl: u8,
+}
+
+/// TEMP_L_LIMIT (0x03)
+///
+/// Low temperature threshold register (R/W)
+/// Sets the low temperature interrupt threshold.
+/// Threshold = (TEMP_L_LIMIT - 63) * 0.64°C.
+/// Writing 0 disables the low limit interrupt.
+#[register(address = Reg::TempLLimit, access_type = Stts22h, generics = 1)]
+#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
+#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
+pub struct TempLLimit {
+    /// TLL[7:0]
+    /// Low temperature threshold value.
+    #[bits(8)]
+    pub tll: u8,
+}
 
 /// CTRL (0x04)
 ///
 /// Control register (R/W)
 /// Used to configure the operating mode, averaging, address increment, and other features.
+#[register(address = Reg::Ctrl, access_type = Stts22h, generics = 1)]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct Ctrl {
@@ -55,6 +128,7 @@ pub struct Ctrl {
 ///
 /// Status register (Read-only)
 /// Provides information about conversion status and threshold events.
+#[register(address = Reg::Status, access_type = Stts22h, generics = 1)]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct Status {
@@ -82,34 +156,27 @@ pub struct Status {
     pub not_used_01: u8,
 }
 
-/// TEMP_H_LIMIT (0x02)
+/// TEMP_L_OUT (0x06) & TEMP_H_OUT (0x07)
 ///
-/// High temperature threshold register (R/W)
-/// Sets the high temperature interrupt threshold.
-/// Threshold = (TEMP_H_LIMIT - 63) * 0.64°C.
-/// Writing 0 disables the high limit interrupt.
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct TempHLimit {
-    /// THL[7:0]
-    /// High temperature threshold value.
-    #[bits(8)]
-    pub thl: u8,
-}
-
-/// TEMP_L_LIMIT (0x03)
+/// Raw temperature output registers (Read-only)
 ///
-/// Low temperature threshold register (R/W)
-/// Sets the low temperature interrupt threshold.
-/// Threshold = (TEMP_L_LIMIT - 63) * 0.64°C.
-/// Writing 0 disables the low limit interrupt.
-#[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
-#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
-pub struct TempLLimit {
-    /// TLL[7:0]
-    /// Low temperature threshold value.
-    #[bits(8)]
-    pub tll: u8,
+/// The `temperature` field contains the raw temperature value in two's complement format,
+/// as provided by the sensor. This struct reads both TEMP_L_OUT (low byte) and TEMP_H_OUT
+/// (high byte) registers to form a single 16-bit value.
+///
+/// To convert the raw value to degrees Celsius, use the `from_lsb_to_celsius` function.
+///
+/// For efficient multi-byte reads, enable the address auto-increment feature using
+/// `auto_increment_set` function.
+#[register(address = Reg::TempLOut, access_type = Stts22h, generics = 1)]
+#[cfg_attr(feature = "bit_order_msb", bitfield(u16, order = Msb))]
+#[cfg_attr(not(feature = "bit_order_msb"), bitfield(u16, order = Lsb))]
+pub struct TempOut {
+    /// T[15:0]
+    /// Raw temperature output (two's complement, 16 bits).
+    /// Resolution: 0.01°C/LSB (divide by 100 to get °C).
+    #[bits(16, access = RO)]
+    pub temperature: i16,
 }
 
 /// Device status
@@ -166,26 +233,4 @@ pub enum SmbusMd {
     TimeoutEnable = 0,
     /// Timeout disabled
     TimeoutDisable = 1,
-}
-
-/// Register addresses
-///
-/// Enumerates the register map of the STTS22H.
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
-pub enum Reg {
-    /// WHO_AM_I register (device identification)
-    WhoAmI = 0x01,
-    /// TEMP_H_LIMIT register (high temperature threshold)
-    TempHLimit = 0x02,
-    /// TEMP_L_LIMIT register (low temperature threshold)
-    TempLLimit = 0x03,
-    /// CTRL register (configuration and mode control)
-    Ctrl = 0x04,
-    /// STATUS register (conversion and threshold status)
-    Status = 0x05,
-    /// TEMP_L_OUT register (temperature output, low byte)
-    TempLOut = 0x06,
-    /// TEMP_H_OUT register (temperature output, high byte)
-    TempHOut = 0x07,
 }

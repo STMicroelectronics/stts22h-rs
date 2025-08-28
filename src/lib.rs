@@ -96,18 +96,14 @@ impl<B: BusOperation> Stts22h<B> {
     ///
     /// * `val`: OdrTemp enum struct to select different ODRs.
     pub fn temp_data_rate_set(&mut self, val: OdrTemp) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl::from_bits(arr[0]);
+        let mut ctrl = Ctrl::read(self)?;
 
         ctrl.set_one_shot((val as u8) & 0x01);
         ctrl.set_freerun(((val as u8) & 0x02) >> 1);
         ctrl.set_low_odr_start(((val as u8) & 0x04) >> 2);
         ctrl.set_avg(((val as u8) & 0x30) >> 4);
 
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
-
-        Ok(())
+        ctrl.write(self)
     }
 
     /// Get temperature sensor data rate selection.
@@ -118,9 +114,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `OdrTemp`: Temperature data rate.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_data_rate_get(&mut self) -> Result<OdrTemp, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl::from_bits(arr[0]);
+        let ctrl = Ctrl::read(self)?;
 
         let odr_value = ctrl.one_shot()
             | (ctrl.freerun() << 1)
@@ -147,13 +141,9 @@ impl<B: BusOperation> Stts22h<B> {
     ///
     /// * `val`: Change the values of bdu in CTRL register.
     pub fn block_data_update_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl::from_bits(arr[0]);
+        let mut ctrl = Ctrl::read(self)?;
         ctrl.set_bdu(val);
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
-
-        Ok(())
+        ctrl.write(self)
     }
 
     /// Get Block data update settings.
@@ -164,10 +154,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `u8`: Get the values of bdu in register CTRL.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn block_data_update_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-
-        Ok(arr[0])
+        Ctrl::read(self).map(|reg| reg.bdu())
     }
 
     /// Get a flag about new data available from temperature sensor.
@@ -175,10 +162,7 @@ impl<B: BusOperation> Stts22h<B> {
     /// If flag equals to 1: new data is available to be read,
     /// then use temperature_raw_get.
     pub fn temp_flag_data_ready_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status::from_bits(arr[0]);
-
+        let status = Status::read(self)?;
         let val = if status.busy() == 1 { 0 } else { 1 };
 
         Ok(val)
@@ -194,9 +178,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `i16`: Temperature raw value.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temperature_raw_get(&mut self) -> Result<i16, Error<B::Error>> {
-        let mut buff: [u8; 2] = [0; 2];
-        self.read_from_register(Reg::TempLOut as u8, &mut buff)?;
-        Ok(i16::from_le_bytes(buff))
+        TempOut::read(self).map(|reg| reg.temperature())
     }
 
     /// Get WHO_AM_I register. Used to identify the sensor.
@@ -207,10 +189,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `u8`: WHO_AM_I content
     ///     * `Err`: Returns an error if the operation fails.
     pub fn dev_id_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut buff: [u8; 1] = [0];
-        self.read_from_register(Reg::WhoAmI as u8, &mut buff)?;
-
-        Ok(buff[0])
+        WhoAmI::read(self).map(|reg| reg.who_am_i())
     }
 
     /// Get device status register.
@@ -221,9 +200,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `DevStatus`: Contains the status of the device.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn dev_status_get(&mut self) -> Result<DevStatus, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status::from_bits(arr[0]);
+        let status = Status::read(self)?;
         let dev_status = DevStatus {
             busy: status.busy(),
         };
@@ -237,13 +214,9 @@ impl<B: BusOperation> Stts22h<B> {
     ///
     /// * `val`: Change the values of `time_out_dis` in register .
     pub fn smbus_interface_set(&mut self, val: SmbusMd) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl::from_bits(arr[0]);
+        let mut ctrl = Ctrl::read(self)?;
         ctrl.set_time_out_dis(val as u8);
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
-
-        Ok(())
+        ctrl.write(self)
     }
 
     /// Get SMBus mode setting.
@@ -254,9 +227,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `SmbusMd`: Describes the SMBus timeout setting.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn smbus_interface_get(&mut self) -> Result<SmbusMd, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl::from_bits(arr[0]);
+        let ctrl = Ctrl::read(self)?;
 
         let val = match ctrl.time_out_dis() {
             0 => SmbusMd::TimeoutEnable,
@@ -274,9 +245,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///
     /// * `val`: Change the values of `if_add_inc` in register .
     pub fn auto_increment_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let mut ctrl = Ctrl::from_bits(arr[0]);
+        let mut ctrl = Ctrl::read(self)?;
         ctrl.set_if_add_inc(val);
         if val == 1 {
             self.chunk_size = CHUNK_SIZE;
@@ -284,9 +253,7 @@ impl<B: BusOperation> Stts22h<B> {
             self.chunk_size = 1;
         }
 
-        self.write_to_register(Reg::Ctrl as u8, &[ctrl.into_bits()])?;
-
-        Ok(())
+        ctrl.write(self)
     }
 
     /// Get status(enable/disable) of AutoIncrement: If enabled register address is
@@ -298,11 +265,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `u8`: Gets the value of if_add_inc in reg CTRL.
     ///     * `Err`: Returns an error if the operation fails.
     pub fn auto_increment_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
-        let ctrl = Ctrl::from_bits(arr[0]);
-
-        Ok(ctrl.if_add_inc())
+        Ctrl::read(self).map(|reg| reg.if_add_inc())
     }
 
     /// Sets the high temperature interrupt threshold register (TEMP_H_LIMIT).
@@ -316,13 +279,9 @@ impl<B: BusOperation> Stts22h<B> {
     /// # Arguments
     /// * `val` - The raw register value to write to TEMP_H_LIMIT.
     pub fn temp_trshld_high_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
-        let mut temp_h_limit = TempHLimit::from_bits(arr[0]);
-        temp_h_limit.set_thl(val);
-        self.write_to_register(Reg::TempHLimit as u8, &[temp_h_limit.into_bits()])?;
-
-        Ok(())
+        TempHLimit::new()
+            .with_thl(val)
+            .write(self)
     }
 
     /// Gets the current high temperature interrupt threshold register value (TEMP_H_LIMIT).
@@ -334,29 +293,23 @@ impl<B: BusOperation> Stts22h<B> {
     /// # Returns
     /// * `val` - The raw register value from TEMP_H_LIMIT.
     pub fn temp_trshld_high_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
-        let val: u8 = TempHLimit::from_bits(arr[0]).thl();
-
-        Ok(val)
+        TempHLimit::read(self).map(|reg| reg.thl())
     }
 
-    /// Gets the current low temperature interrupt threshold register value (TEMP_L_LIMIT).
+    /// Sets the low temperature interrupt threshold register (TEMP_L_LIMIT).
     ///
-    /// Returns the raw register value `val`, which corresponds to a temperature threshold:
+    /// When the temperature falls below this threshold, a low temperature interrupt is triggered.
+    ///
+    /// - The temperature threshold corresponding to `val` is:
     ///     `threshold (°C) = (val - 63) * 0.64`
-    /// If `val` is 0, the low temperature interrupt is disabled.
+    /// - Setting `val` to 0 disables the low temperature interrupt.
     ///
-    /// # Returns
-    /// * `val` - The raw register value from TEMP_L_LIMIT.
+    /// # Arguments
+    /// * `val` - The raw register value to write to TEMP_L_LIMIT.
     pub fn temp_trshld_low_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
-        let mut temp_l_limit = TempLLimit::from_bits(arr[0]);
-        temp_l_limit.set_tll(val);
-        self.write_to_register(Reg::TempLLimit as u8, &[temp_l_limit.into_bits()])?;
-
-        Ok(())
+        TempLLimit::new()
+            .with_tll(val)
+            .write(self)
     }
 
     /// Gets the current low temperature interrupt threshold register value (TEMP_L_LIMIT).
@@ -368,11 +321,7 @@ impl<B: BusOperation> Stts22h<B> {
     /// # Returns
     /// * `val` - The raw register value from TEMP_L_LIMIT.
     pub fn temp_trshld_low_get(&mut self) -> Result<u8, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
-        let val: u8 = TempLLimit::from_bits(arr[0]).tll();
-
-        Ok(val)
+        TempLLimit::read(self).map(|reg| reg.tll())
     }
 
     /// Reads the temperature threshold interrupt source status.
@@ -392,9 +341,7 @@ impl<B: BusOperation> Stts22h<B> {
     /// * `Ok(TempTrlhdSrc)`: Contains the current threshold status bits.
     /// * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_src_get(&mut self) -> Result<TempTrlhdSrc, Error<B::Error>> {
-        let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status as u8, &mut arr)?;
-        let status = Status::from_bits(arr[0]);
+        let status = Status::read(self)?;
 
         let under_thl = status.under_thl();
         let over_thh = status.over_thh();
