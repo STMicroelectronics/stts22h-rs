@@ -10,6 +10,7 @@ use st_mems_bus::*;
 pub struct Stts22h<B> {
     /// The bus driver.
     pub bus: B,
+    chunk_size: usize
 }
 
 /// Driver errors.
@@ -34,7 +35,7 @@ where
     ///
     /// * `Self`: A new `` instance
     pub fn new_bus(bus: B) -> Self {
-        Self { bus }
+        Self { bus, chunk_size: 1 }
     }
 }
 impl<P> Stts22h<Owned<i2c::I2cBus<P>>>
@@ -56,7 +57,7 @@ where
     pub fn new_i2c(i2c: P, address: I2CAddress) -> Result<Self, Error<P::Error>> {
         // Initialize the I2C bus with the COMPONENT address
         let bus = Owned::new(i2c::I2cBus::new(i2c, address as SevenBitAddress));
-        let instance = Self { bus };
+        let instance = Self { bus, chunk_size: 1 };
 
         Ok(instance)
     }
@@ -79,7 +80,7 @@ where
     pub fn new_spi(spi: P) -> Result<Self, Error<P::Error>> {
         // Initialize the SPI bus
         let bus = Owned::new(spi::SpiBus::new(spi));
-        let instance = Self { bus };
+        let instance = Self { bus, chunk_size: 1 };
 
         Ok(instance)
     }
@@ -87,33 +88,28 @@ where
 
 impl<B: BusOperation> Stts22h<B> {
     #[inline]
-    pub fn read_from_register(&mut self, reg: Reg, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
-        self.bus
-            .write_byte_read_bytes(&[reg as u8], buf)
-            .map_err(Error::Bus)?;
+    fn write_to_register(&mut self, mut reg: u8, buf: &[u8]) -> Result<(), Error<B::Error>> {
+        let mut tmp: [u8; MAX_CHUNK_SIZE] = [0; MAX_CHUNK_SIZE];
+        for chunk in buf.chunks(self.chunk_size) {
+            tmp[0] = reg;
+            tmp[1..1 + chunk.len()].copy_from_slice(chunk);
+            self.bus.write_bytes(&tmp[..1 + chunk.len()]).map_err(Error::Bus)?;
 
+            reg = reg.wrapping_add(chunk.len() as u8);
+        }
         Ok(())
     }
 
     #[inline]
-    pub fn write_to_register(&mut self, reg: Reg, buf: &[u8]) -> Result<(), Error<B::Error>> {
-        let size = buf.len();
-        let mut write_size: usize;
-        let mut tmp: [u8; CHUNK_SIZE + 1] = [0; CHUNK_SIZE + 1];
-        for i in (0..size).step_by(CHUNK_SIZE - 1) {
-            write_size = if size - i > CHUNK_SIZE - 1 {
-                CHUNK_SIZE - 1
-            } else {
-                size - i
-            };
-            tmp[0] = reg as u8 + (i as u8);
-            tmp[1..1 + write_size].copy_from_slice(&buf[i..i + write_size]);
-            self.bus
-                .write_bytes(&tmp[..1 + write_size])
-                .map_err(Error::Bus)?;
+    pub fn read_from_register(&mut self, mut reg: u8, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
+        for chunk in buf.chunks_mut(self.chunk_size) {
+            self.bus.read_from_register(reg, chunk).map_err(Error::Bus)?;
+            reg = reg.wrapping_add(chunk.len() as u8);
         }
+
         Ok(())
     }
+
 
     /// Temperature sensor data rate selection. (set)
     ///
@@ -128,15 +124,15 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_data_rate_set(&mut self, val: OdrTemp) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
-
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let mut ctrl = Ctrl(arr[0]);
+
         ctrl.set_one_shot((val as u8) & 0x01);
         ctrl.set_freerun(((val as u8) & 0x02) >> 1);
         ctrl.set_low_odr_start(((val as u8) & 0x04) >> 2);
         ctrl.set_avg(((val as u8) & 0x30) >> 4);
 
-        self.write_to_register(Reg::Ctrl, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
 
         Ok(())
     }
@@ -149,7 +145,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_data_rate_get(&mut self) -> Result<OdrTemp, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let ctrl = Ctrl(arr[0]);
 
         let odr_value = ctrl.one_shot()
@@ -183,10 +179,10 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn block_data_update_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let mut ctrl = Ctrl(arr[0]);
         ctrl.set_bdu(val);
-        self.write_to_register(Reg::Ctrl, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
 
         Ok(())
     }
@@ -199,7 +195,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn block_data_update_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
 
         Ok(arr[0])
     }
@@ -212,10 +208,10 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_flag_data_ready_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status, &mut arr)?;
+        self.read_from_register(Reg::Status as u8, &mut arr)?;
         let status = Status(arr[0]);
 
-        let val = status.busy();
+        let val = if status.busy() == 1 { 0 } else { 1 };
 
         Ok(val)
     }
@@ -230,11 +226,8 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temperature_raw_get(&mut self) -> Result<i16, Error<B::Error>> {
         let mut buff: [u8; 2] = [0; 2];
-        self.read_from_register(Reg::TempLOut, &mut buff)?;
-        let mut val: i16 = i16::from(buff[1]);
-        val = (val * 256) + i16::from(buff[0]);
-
-        Ok(val)
+        self.read_from_register(Reg::TempLOut as u8, &mut buff)?;
+        Ok(i16::from_le_bytes(buff))
     }
     /// Device Who am I..(get)
     ///
@@ -245,7 +238,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn dev_id_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut buff: [u8; 1] = [0];
-        self.read_from_register(Reg::WhoAmI, &mut buff)?;
+        self.read_from_register(Reg::WhoAmI as u8, &mut buff)?;
 
         Ok(buff[0])
     }
@@ -258,7 +251,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn dev_status_get(&mut self) -> Result<DevStatus, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status, &mut arr)?;
+        self.read_from_register(Reg::Status as u8, &mut arr)?;
         let status = Status(arr[0]);
         let dev_status = DevStatus {
             busy: status.busy(),
@@ -266,7 +259,7 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(dev_status)
     }
-    /// SMBus mode set.
+/// SMBus mode set.
     ///
     /// # Arguments
     ///
@@ -279,10 +272,10 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn smbus_interface_set(&mut self, val: SmbusMd) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let mut ctrl = Ctrl(arr[0]);
         ctrl.set_time_out_dis(val as u8);
-        self.write_to_register(Reg::Ctrl, &[ctrl.0])?;
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
 
         Ok(())
     }
@@ -295,7 +288,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn smbus_interface_get(&mut self) -> Result<SmbusMd, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let ctrl = Ctrl(arr[0]);
 
         let val = match ctrl.time_out_dis() {
@@ -320,10 +313,16 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn auto_increment_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
         let mut ctrl = Ctrl(arr[0]);
         ctrl.set_if_add_inc(val);
-        self.write_to_register(Reg::Ctrl, &[ctrl.0])?;
+        if val == 1 {
+            self.chunk_size = CHUNK_SIZE;
+        } else {
+            self.chunk_size = 1;
+        }
+
+        self.write_to_register(Reg::Ctrl as u8, &[ctrl.0])?;
 
         Ok(())
     }
@@ -337,7 +336,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn auto_increment_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Ctrl, &mut arr)?;
+        self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
 
         Ok(arr[0])
     }
@@ -354,10 +353,10 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_high_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempHLimit, &mut arr)?;
+        self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
         let mut temp_h_limit = TempHLimit(arr[0]);
         temp_h_limit.set_thl(val);
-        self.write_to_register(Reg::TempHLimit, &[temp_h_limit.0])?;
+        self.write_to_register(Reg::TempHLimit as u8, &[temp_h_limit.0])?;
 
         Ok(())
     }
@@ -370,7 +369,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_high_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempHLimit, &mut arr)?;
+        self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
         let val: u8 = TempHLimit(arr[0]).thl();
 
         Ok(val)
@@ -388,10 +387,10 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_low_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempLLimit, &mut arr)?;
+        self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
         let mut temp_l_limit = TempLLimit(arr[0]);
         temp_l_limit.set_tll(val);
-        self.write_to_register(Reg::TempLLimit, &[temp_l_limit.0])?;
+        self.write_to_register(Reg::TempLLimit as u8, &[temp_l_limit.0])?;
 
         Ok(())
     }
@@ -404,7 +403,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_low_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::TempLLimit, &mut arr)?;
+        self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
         let val: u8 = TempLLimit(arr[0]).tll();
 
         Ok(val)
@@ -418,7 +417,7 @@ impl<B: BusOperation> Stts22h<B> {
     ///     * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_src_get(&mut self) -> Result<TempTrlhdSrc, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
-        self.read_from_register(Reg::Status, &mut arr)?;
+        self.read_from_register(Reg::Status as u8, &mut arr)?;
         let status = Status(arr[0]);
 
         let under_thl = status.under_thl();
@@ -530,4 +529,12 @@ pub enum I2CAddress {
 
 pub const ID: u8 = 0xA0;
 
-const CHUNK_SIZE: usize = 256;
+/// CHUNK_SIZE represent how to split reads and writes.
+///
+/// CHUNK_SIZE is used when if_add_inc bit is enabled, otherwise 1 (singular
+/// writes and reads) are used.
+///
+/// # Safety
+/// CHUNK_SIZE should always be less than or equal to (MAX_CHUNK_SIZE - 1).
+const CHUNK_SIZE: usize = 255;
+const MAX_CHUNK_SIZE: usize = 256;
