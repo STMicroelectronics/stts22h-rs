@@ -2,43 +2,46 @@
 use bitfield_struct::bitfield;
 use core::fmt::Debug;
 use embedded_hal::i2c::{I2c, SevenBitAddress};
-use embedded_hal::spi::SpiDevice;
 
 use st_mems_bus::*;
 
-/// The COMPONENT generic driver struct.
+/// Driver for the STTS22H sensor.
+///
+/// The struct takes a bus to write to the registers.
+/// The bus is generalized over the BusOperation trait, however actually only the
+/// I2C protocol is supported; this also allows the user to implement sharing
+/// techniques to share the underlying bus.
 pub struct Stts22h<B> {
-    /// The bus driver.
     pub bus: B,
+    /// Handles the split of reads/writes.
+    ///
+    /// If set to 1 singular r/w are used, if set more than 1 multiple r/w are
+    /// used.
     chunk_size: usize
 }
 
-/// Driver errors.
+/// Error that driver could generates
 #[derive(Debug)]
 pub enum Error<B> {
-    Bus(B),          // Error at the bus level
-    WhoAmIError(u8), // Incorrect COMPONENT identifier
-    UnexpectedValue, // Unexpected value read from a register
+    /// Incapsulates errors coming from the bus.
+    Bus(B),
+    /// Unexpected value read from a register
+    UnexpectedValue,
 }
 impl<B> Stts22h<B>
 where
     B: BusOperation,
 {
     /// Constructor method based on general BusOperation implementation.
-    /// Could take another sensor as bus to use it as passthrough
     ///
     /// # Arguments
     ///
     /// * `bus`: An object that implements `BusOperation` trait
-    ///
-    /// # Returns
-    ///
-    /// * `Self`: A new `` instance
-    pub fn new_bus(bus: B) -> Self {
+    pub fn from_bus(bus: B) -> Self {
         Self { bus, chunk_size: 1 }
     }
 }
-impl<P> Stts22h<Owned<i2c::I2cBus<P>>>
+impl<P> Stts22h<i2c::I2cBus<P>>
 where
     P: I2c,
 {
@@ -47,39 +50,9 @@ where
     /// # Arguments
     ///
     /// * `i2c`: The I2C peripheral.
-    /// * `address`: The I2C address of the COMPONENT sensor.
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `Self`: Returns an instance of ``.
-    ///     * `Err`: Returns an error if the initialization fails.
+    /// * `address`: The I2C address of the STTS22H sensor.
     pub fn new_i2c(i2c: P, address: I2CAddress) -> Result<Self, Error<P::Error>> {
-        // Initialize the I2C bus with the COMPONENT address
-        let bus = Owned::new(i2c::I2cBus::new(i2c, address as SevenBitAddress));
-        let instance = Self { bus, chunk_size: 1 };
-
-        Ok(instance)
-    }
-}
-impl<P> Stts22h<Owned<spi::SpiBus<P>>>
-where
-    P: SpiDevice,
-{
-    /// Constructor method for using the SPI bus.
-    ///
-    /// # Arguments
-    ///
-    /// * `spi`: The SPI peripheral.
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `Self`: Returns an instance of ``.
-    ///     * `Err`: Returns an error if the initialization fails.
-    pub fn new_spi(spi: P) -> Result<Self, Error<P::Error>> {
-        // Initialize the SPI bus
-        let bus = Owned::new(spi::SpiBus::new(spi));
+        let bus = i2c::I2cBus::new(i2c, address as SevenBitAddress);
         let instance = Self { bus, chunk_size: 1 };
 
         Ok(instance)
@@ -111,17 +84,13 @@ impl<B: BusOperation> Stts22h<B> {
     }
 
 
-    /// Temperature sensor data rate selection. (set)
+    /// Set temperature sensor data rate.
+    ///
+    /// Set the CTRL register according to the datasheet.
     ///
     /// # Arguments
     ///
-    /// * `val`: Change the values of "one_shot" in reg .
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val`: OdrTemp enum struct to select different ODRs.
     pub fn temp_data_rate_set(&mut self, val: OdrTemp) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
@@ -136,7 +105,8 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// Temperature sensor data rate selection.
+
+    /// Get temperature sensor data rate selection.
     ///
     /// # Returns
     ///
@@ -166,17 +136,12 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(odr_temp)
     }
-    /// Block data update.(set)
+
+    /// Set Block data update.
     ///
     /// # Arguments
     ///
-    /// * `val`: Change the values of bdu in reg CTRL.
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val`: Change the values of bdu in CTRL register.
     pub fn block_data_update_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
@@ -186,7 +151,8 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// Block data update.
+
+    /// Get Block data update settings.
     ///
     /// # Returns
     ///
@@ -199,13 +165,11 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(arr[0])
     }
-    /// New data available from temperature sensor.
+
+    /// Get a flag about new data available from temperature sensor.
     ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `u8`: Returns an option of `uint8_t`.
-    ///     * `Err`: Returns an error if the operation fails.
+    /// If flag equals to 1: new data is available to be read,
+    /// then use temperature_raw_get.
     pub fn temp_flag_data_ready_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status as u8, &mut arr)?;
@@ -215,7 +179,8 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(val)
     }
-    /// Temperature data output register.
+
+    /// Read raw temperature data from registers.
     ///
     /// The L and H registers together express a 16-bit word in two's complement.
     ///
@@ -229,12 +194,13 @@ impl<B: BusOperation> Stts22h<B> {
         self.read_from_register(Reg::TempLOut as u8, &mut buff)?;
         Ok(i16::from_le_bytes(buff))
     }
-    /// Device Who am I..(get)
+
+    /// Get WHO_AM_I register. Used to identify the sensor.
     ///
     /// # Returns
     ///
     /// * `Result`
-    ///     * `u8`: Buffer that stores the data read.
+    ///     * `u8`: WHO_AM_I content
     ///     * `Err`: Returns an error if the operation fails.
     pub fn dev_id_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut buff: [u8; 1] = [0];
@@ -242,7 +208,8 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(buff[0])
     }
-    /// Device status register.(get)
+
+    /// Get device status register.
     ///
     /// # Returns
     ///
@@ -259,17 +226,12 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(dev_status)
     }
-/// SMBus mode set.
+
+    /// Set SMBus mode.
     ///
     /// # Arguments
     ///
     /// * `val`: Change the values of `time_out_dis` in register .
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`
-    ///     * `Err`: Returns an error if the operation fails.
     pub fn smbus_interface_set(&mut self, val: SmbusMd) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
@@ -279,7 +241,8 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// SMBus mode.
+
+    /// Get SMBus mode setting.
     ///
     /// # Returns
     ///
@@ -299,18 +262,13 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(val)
     }
-    /// Register address automatically incremented during a multiple
-    /// byte access with a serial interface.
+
+    /// Enable/Disable AutoIncrement: Register address automatically incremented
+    /// during a multiple byte access with a serial interface.
     ///
     /// # Arguments
     ///
     /// * `val`: Change the values of `if_add_inc` in register .
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`: Returns a result indicating success.
-    ///     * `Err`: Returns an error if the operation fails.
     pub fn auto_increment_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Ctrl as u8, &mut arr)?;
@@ -326,8 +284,9 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// Register address is automatically incremented during a multiple
-    /// byte access with a serial interface.
+
+    /// Get status(enable/disable) of AutoIncrement: If enabled register address is
+    /// automatically incremented during a multiple byte access with a serial interface.
     ///
     /// # Returns
     ///
@@ -341,17 +300,17 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(ctrl.if_add_inc())
     }
-    /// Over temperature interrupt value. (degC / 0.64) + 63. (set)
+
+    /// Sets the high temperature interrupt threshold register (TEMP_H_LIMIT).
+    ///
+    /// When the temperature exceeds this threshold, a high temperature interrupt is triggered.
+    ///
+    /// - The temperature threshold corresponding to `val` is:
+    ///   `threshold (°C) = (val - 63) * 0.64`
+    /// - Setting `val` to 0 disables the high temperature interrupt.
     ///
     /// # Arguments
-    ///
-    /// * `val`: Change the values of thl in reg TEMP_H_LIMIT.
-    ///
-    /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val` - The raw register value to write to TEMP_H_LIMIT.
     pub fn temp_trshld_high_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
@@ -361,13 +320,15 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// Over temperature interrupt value. (degC / 0.64) + 63. (get)
+
+    /// Gets the current high temperature interrupt threshold register value (TEMP_H_LIMIT).
+    ///
+    /// Returns the raw register value `val`, which corresponds to a temperature threshold:
+    ///     `threshold (°C) = (val - 63) * 0.64`
+    /// If `val` is 0, the high temperature interrupt is disabled.
     ///
     /// # Returns
-    ///
-    /// * `Result`
-    ///     * `u8`: Get the values of `thl` in register `TEMP_H_LIMIT`.
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val` - The raw register value from TEMP_H_LIMIT.
     pub fn temp_trshld_high_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempHLimit as u8, &mut arr)?;
@@ -375,17 +336,15 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(val)
     }
-    /// Under temperature interrupt value. ( degC / 0.64 ) + 63.(set)
+
+    /// Gets the current low temperature interrupt threshold register value (TEMP_L_LIMIT).
     ///
-    /// # Arguments
-    ///
-    /// * `val`: Change the values of tll in reg TEMP_L_LIMIT.
+    /// Returns the raw register value `val`, which corresponds to a temperature threshold:
+    ///     `threshold (°C) = (val - 63) * 0.64`
+    /// If `val` is 0, the low temperature interrupt is disabled.
     ///
     /// # Returns
-    ///
-    /// * `Result`
-    ///     * `()`
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val` - The raw register value from TEMP_L_LIMIT.
     pub fn temp_trshld_low_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
@@ -395,13 +354,15 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(())
     }
-    /// Under temperature interrupt value. ( degC / 0.64 ) + 63. (get)
+
+    /// Gets the current low temperature interrupt threshold register value (TEMP_L_LIMIT).
+    ///
+    /// Returns the raw register value `val`, which corresponds to a temperature threshold:
+    ///     `threshold (°C) = (val - 63) * 0.64`
+    /// If `val` is 0, the low temperature interrupt is disabled.
     ///
     /// # Returns
-    ///
-    /// * `Result`
-    ///     * `u8`: Get the values of tll in reg TEMP_L_LIMIT.
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `val` - The raw register value from TEMP_L_LIMIT.
     pub fn temp_trshld_low_get(&mut self) -> Result<u8, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::TempLLimit as u8, &mut arr)?;
@@ -409,13 +370,23 @@ impl<B: BusOperation> Stts22h<B> {
 
         Ok(val)
     }
-    /// Temperature interrupt on threshold source.
+
+    /// Reads the temperature threshold interrupt source status.
+    ///
+    /// This function checks the status register for temperature threshold events:
+    /// - `under_thl`: Indicates if the temperature has fallen below the low threshold.
+    ///     - `0`: Low limit not exceeded (or interrupt disabled).
+    ///     - `1`: Low limit exceeded. This bit is automatically reset to 0 upon reading
+    ///       the status register.
+    /// - `over_thh`: Indicates if the temperature has exceeded the high threshold.
+    ///     - `0`: High limit not exceeded (or interrupt disabled).
+    ///     - `1`: High limit exceeded. This bit is automatically reset to 0 upon reading
+    ///       the status register.
     ///
     /// # Returns
     ///
-    /// * `Result`
-    ///     * `TempTrlhdSrc`: Contains threshold status.
-    ///     * `Err`: Returns an error if the operation fails.
+    /// * `Ok(TempTrlhdSrc)`: Contains the current threshold status bits.
+    /// * `Err`: Returns an error if the operation fails.
     pub fn temp_trshld_src_get(&mut self) -> Result<TempTrlhdSrc, Error<B::Error>> {
         let mut arr: [u8; 1] = [0];
         self.read_from_register(Reg::Status as u8, &mut arr)?;
@@ -431,6 +402,15 @@ impl<B: BusOperation> Stts22h<B> {
     }
 }
 
+/// Converts a raw temperature value from LSB (least significant bits) to degrees Celsius.
+///
+/// The conversion formula is: `celsius = lsb / 100.0`
+///
+/// # Arguments
+/// * `lsb` - The raw temperature value as read from the sensor register.
+///
+/// # Returns
+/// * Temperature in degrees Celsius as an `f32`.
 pub fn from_lsb_to_celsius(lsb: i16) -> f32 {
     lsb as f32 / 100.0
 }
