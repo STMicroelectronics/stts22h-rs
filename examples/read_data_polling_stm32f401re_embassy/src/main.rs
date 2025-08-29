@@ -17,6 +17,7 @@ use heapless::String;
 use {defmt_rtt as _, panic_probe as _};
 
 use stts22h_rs::*;
+use stts22h_rs::prelude::*;
 
 #[defmt::panic_handler]
 fn panic() -> ! {
@@ -57,13 +58,14 @@ async fn main(_spawner: Spawner) {
 
     let mut msg: String<64> = String::new();
 
-    let mut sensor = Stts22h::new_i2c(i2c, I2CAddress::I2cAddH).unwrap();
+    let mut sensor = Stts22h::new_i2c(i2c, I2CAddress::I2cAddH);
 
     let whoami = sensor.dev_id_get().unwrap();
     if whoami != ID {
         loop {}
     }
 
+    sensor.auto_increment_set(1).unwrap();
     sensor.temp_data_rate_set(OdrTemp::Odr1Hz).unwrap();
 
     // Read samples in polling mode (no interrupt)

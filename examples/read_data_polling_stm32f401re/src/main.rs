@@ -15,6 +15,7 @@ use stm32f4xx_hal::{
     serial::Config,
 };
 use stts22h_rs::*;
+use stts22h_rs::prelude::*;
 
 #[entry]
 fn main() -> ! {
@@ -59,13 +60,14 @@ fn main() -> ! {
 
     delay.delay_ms(5);
 
-    let mut sensor = Stts22h::new_i2c(i2c, I2CAddress::I2cAddH).unwrap();
+    let mut sensor = Stts22h::new_i2c(i2c, I2CAddress::I2cAddH);
 
     let whoami = sensor.dev_id_get().unwrap();
     if whoami != ID {
         loop {}
     }
 
+    sensor.auto_increment_set(1).unwrap();
     sensor.temp_data_rate_set(OdrTemp::Odr1Hz).unwrap();
 
     // Read samples in polling mode (no interrupt)
@@ -76,7 +78,7 @@ fn main() -> ! {
             let data = sensor.temperature_raw_get().unwrap();
             let temp_c = stts22h_rs::from_lsb_to_celsius(data);
 
-            writeln!(tx, "Temperature [degC]: {:.2}", temp_c,).unwrap();
+            writeln!(tx, "Temperature [degC]: {:.2}", temp_c).unwrap();
         }
 
         delay.delay_ms(1000);
