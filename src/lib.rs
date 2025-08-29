@@ -21,7 +21,7 @@ pub struct Stts22h<B> {
     ///
     /// If set to 1 singular r/w are used, if set more than 1 multiple r/w are
     /// used.
-    chunk_size: usize
+    chunk_size: usize,
 }
 
 /// Error that driver could generates
@@ -55,11 +55,9 @@ where
     ///
     /// * `i2c`: The I2C peripheral.
     /// * `address`: The I2C address of the STTS22H sensor.
-    pub fn new_i2c(i2c: P, address: I2CAddress) -> Result<Self, Error<P::Error>> {
+    pub fn new_i2c(i2c: P, address: I2CAddress) -> Self {
         let bus = i2c::I2cBus::new(i2c, address as SevenBitAddress);
-        let instance = Self { bus, chunk_size: 1 };
-
-        Ok(instance)
+        Self { bus, chunk_size: 1 }
     }
 }
 
@@ -70,7 +68,9 @@ impl<B: BusOperation> Stts22h<B> {
         for chunk in buf.chunks(self.chunk_size) {
             tmp[0] = reg;
             tmp[1..1 + chunk.len()].copy_from_slice(chunk);
-            self.bus.write_bytes(&tmp[..1 + chunk.len()]).map_err(Error::Bus)?;
+            self.bus
+                .write_bytes(&tmp[..1 + chunk.len()])
+                .map_err(Error::Bus)?;
 
             reg = reg.wrapping_add(chunk.len() as u8);
         }
@@ -78,15 +78,20 @@ impl<B: BusOperation> Stts22h<B> {
     }
 
     #[inline]
-    pub fn read_from_register(&mut self, mut reg: u8, buf: &mut [u8]) -> Result<(), Error<B::Error>> {
+    pub fn read_from_register(
+        &mut self,
+        mut reg: u8,
+        buf: &mut [u8],
+    ) -> Result<(), Error<B::Error>> {
         for chunk in buf.chunks_mut(self.chunk_size) {
-            self.bus.read_from_register(reg, chunk).map_err(Error::Bus)?;
+            self.bus
+                .read_from_register(reg, chunk)
+                .map_err(Error::Bus)?;
             reg = reg.wrapping_add(chunk.len() as u8);
         }
 
         Ok(())
     }
-
 
     /// Set temperature sensor data rate.
     ///
@@ -279,9 +284,7 @@ impl<B: BusOperation> Stts22h<B> {
     /// # Arguments
     /// * `val` - The raw register value to write to TEMP_H_LIMIT.
     pub fn temp_trshld_high_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        TempHLimit::new()
-            .with_thl(val)
-            .write(self)
+        TempHLimit::new().with_thl(val).write(self)
     }
 
     /// Gets the current high temperature interrupt threshold register value (TEMP_H_LIMIT).
@@ -301,15 +304,13 @@ impl<B: BusOperation> Stts22h<B> {
     /// When the temperature falls below this threshold, a low temperature interrupt is triggered.
     ///
     /// - The temperature threshold corresponding to `val` is:
-    ///     `threshold (°C) = (val - 63) * 0.64`
+    ///   `threshold (°C) = (val - 63) * 0.64`
     /// - Setting `val` to 0 disables the low temperature interrupt.
     ///
     /// # Arguments
     /// * `val` - The raw register value to write to TEMP_L_LIMIT.
     pub fn temp_trshld_low_set(&mut self, val: u8) -> Result<(), Error<B::Error>> {
-        TempLLimit::new()
-            .with_tll(val)
-            .write(self)
+        TempLLimit::new().with_tll(val).write(self)
     }
 
     /// Gets the current low temperature interrupt threshold register value (TEMP_L_LIMIT).

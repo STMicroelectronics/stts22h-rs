@@ -1,5 +1,5 @@
+use crate::{Error, Stts22h};
 use bitfield_struct::bitfield;
-use crate::{Stts22h, Error};
 use st_mem_bank_macro::register;
 use st_mems_bus::BusOperation;
 
