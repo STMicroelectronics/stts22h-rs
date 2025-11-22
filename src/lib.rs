@@ -15,7 +15,7 @@ use prelude::*;
 /// The bus is generalized over the BusOperation trait, however actually only the
 /// I2C protocol is supported; this also allows the user to implement sharing
 /// techniques to share the underlying bus.
-pub struct Stts22h<B> {
+pub struct Stts22h<B: BusOperation> {
     pub bus: B,
     /// Handles the split of reads/writes.
     ///
