@@ -205,7 +205,7 @@ pub struct TempTrlhdSrc {
 ///
 /// Defines the ODR or power mode for the temperature sensor.
 #[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum OdrTemp {
     /// Power-down mode (default)
     PowerDown = 0x00,
