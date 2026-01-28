@@ -1,8 +1,9 @@
-use crate::{Error, Stts22h};
+use super::super::{
+    BusOperation, Error, RegisterOperation, SensorOperation, Stts22h, bisync, register::OnState,
+};
+
 use bitfield_struct::bitfield;
 use st_mem_bank_macro::register;
-use st_mems_bus::BusOperation;
-
 /// Register addresses
 ///
 /// Enumerates the register map of the STTS22H.
@@ -29,7 +30,7 @@ pub enum Reg {
 ///
 /// Device identification register (Read-only)
 /// Returns a fixed device ID value (default: 0xA0) to identify the STTS22H sensor.
-#[register(address = Reg::WhoAmI, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::WhoAmI, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct WhoAmI {
@@ -46,7 +47,7 @@ pub struct WhoAmI {
 /// Sets the high temperature interrupt threshold.
 /// Threshold = (TEMP_H_LIMIT - 63) * 0.64°C.
 /// Writing 0 disables the high limit interrupt.
-#[register(address = Reg::TempHLimit, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::TempHLimit, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct TempHLimit {
@@ -62,7 +63,7 @@ pub struct TempHLimit {
 /// Sets the low temperature interrupt threshold.
 /// Threshold = (TEMP_L_LIMIT - 63) * 0.64°C.
 /// Writing 0 disables the low limit interrupt.
-#[register(address = Reg::TempLLimit, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::TempLLimit, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct TempLLimit {
@@ -76,7 +77,7 @@ pub struct TempLLimit {
 ///
 /// Control register (R/W)
 /// Used to configure the operating mode, averaging, address increment, and other features.
-#[register(address = Reg::Ctrl, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::Ctrl, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct Ctrl {
@@ -128,7 +129,7 @@ pub struct Ctrl {
 ///
 /// Status register (Read-only)
 /// Provides information about conversion status and threshold events.
-#[register(address = Reg::Status, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::Status, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u8, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u8, order = Lsb))]
 pub struct Status {
@@ -168,7 +169,7 @@ pub struct Status {
 ///
 /// For efficient multi-byte reads, enable the address auto-increment feature using
 /// `auto_increment_set` function.
-#[register(address = Reg::TempLOut, access_type = Stts22h, generics = 1)]
+#[register(address = Reg::TempLOut, access_type = "Stts22h<B, OnState>")]
 #[cfg_attr(feature = "bit_order_msb", bitfield(u16, order = Msb))]
 #[cfg_attr(not(feature = "bit_order_msb"), bitfield(u16, order = Lsb))]
 pub struct TempOut {
