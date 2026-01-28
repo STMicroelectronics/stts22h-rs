@@ -39,7 +39,7 @@ Add the driver to your `Cargo.toml` dependencies:
 
 ```toml
 [dependencies]
-stts22h-rs = "1.1.0"
+stts22h-rs = "2.0.0"
 ```
 
 Or, add it directly from the terminal:
@@ -50,9 +50,29 @@ cargo add stts22h-rs
 
 ## Usage
 
-Include the crate and its prelude
+By default, the create exposes the **asynchronous** API, and it could be included using:
 ```rust
-use stts22h_rs as stts22h;
+use stts22h_rs::asynchronous as stts22h;
+use stts22h::*;
+use stts22h::prelude::*;
+```
+
+
+### Blocking API (optional feature)
+
+To use the **blocking** API instead of the asynchronous one, disable default features and enable the `blocking` feature in your Cargo.toml
+```toml
+[dependencies]
+stts22h-rs = { version = "2.0.0", default-features = false, features = ["blocking"] }
+```
+or from the terminal:
+```sh
+cargo add stts22h-rs --no-default-features --features blocking
+```
+
+Then import the blocking API:
+```rust
+use stts22h_rs::blocking as stts22h;
 use stts22h::*;
 use stts22h::prelude::*;
 ```
